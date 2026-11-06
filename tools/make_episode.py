@@ -9,22 +9,17 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
-from urllib.parse import urlencode, urlsplit
+import tomllib
+from urllib.parse import parse_qsl, urlencode, urlsplit
 from urllib.request import Request, urlopen
 import wave
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 JST = timezone(timedelta(hours=9))
-FEEDS = (
-    ("tech", "ITmedia AI+", "https://rss.itmedia.co.jp/rss/2.0/aiplus.xml"),
-    ("tech", "PC Watch", "https://pc.watch.impress.co.jp/data/rss/1.0/pcw/feed.rdf"),
-    ("games", "AUTOMATON", "https://automaton-media.com/feed/"),
-    ("local", "宮崎市", "https://www.city.miyazaki.miyazaki.jp/city/public_relations/press_material/rss.xml"),
-)
-CATEGORIES = ("tech", "games", "local")
-PC_EXCLUDED = re.compile(r"お買い得|セール|値引き|Sale|Sponsored|配信番組|生配信|生放送", re.I)
-LOCAL_EXCLUDED = re.compile(r"逮捕|事件|事故|不正アクセス|流出|訃報")
+RULES = tomllib.loads((ROOT / "tools/article_rules.toml").read_text(encoding="utf-8"))
+SLOTS = RULES["slots"]
+USER_AGENT = "ClearRockRadio/1.0"
 VOICE = "http://localhost:50021"
 
 
@@ -37,7 +32,7 @@ def write_json(path, value):
 
 
 def request(url, payload=None, timeout=30):
-    headers = {"User-Agent": "ClearRockRadio/1.0"}
+    headers = {"User-Agent": USER_AGENT}
     data = None
     if payload is not None:
         data = json.dumps(payload, ensure_ascii=False).encode()
@@ -48,47 +43,134 @@ def request(url, payload=None, timeout=30):
         return response.read()
 
 
-def candidate_articles(now):
+def https_url(value):
+    if not isinstance(value, str) or any(ch.isspace() for ch in value):
+        return False
+    try:
+        url = urlsplit(value)
+        return url.scheme == "https" and bool(url.hostname) and url.username is None
+    except ValueError:
+        return False
+
+
+def article_key(url):
+    parts = urlsplit(url)
+    query = tuple(sorted((name, value) for name, value in parse_qsl(parts.query, keep_blank_values=True)
+                         if not name.lower().startswith("utm_") and name.lower() not in {"fbclid", "gclid"}))
+    return parts.netloc.lower(), parts.path.rstrip("/"), query
+
+
+def aired_article_keys():
+    urls = set()
+    for path in sorted((ROOT / "episodes").glob("*.json")):
+        for news in read_json(path).get("news", []):
+            for source in (news, news.get("link") or {}, news.get("source_link") or {}):
+                url = source.get("url")
+                if https_url(url):
+                    urls.add(article_key(url))
+    return urls
+
+
+def candidate_articles(now, *, include_excluded=False):
     articles = {}
-    for category, site, url in FEEDS:
-        for item in ET.fromstring(request(url)).iterfind(".//{*}item"):
+    aired = aired_article_keys()
+    feeds = {}
+    cutoff = now - timedelta(days=RULES["days"])
+    for category, slot in SLOTS.items():
+        feed = slot["feed"]
+        if feed not in feeds:
+            feeds[feed] = ET.fromstring(request(feed))
+        for item in feeds[feed].iterfind(".//{*}item"):
             title = item.findtext("{*}title", "").strip()
             link = item.findtext("{*}link", "").strip()
             stamp = item.findtext("{*}pubDate") or item.findtext("{*}date")
-            if not title or urlsplit(link).scheme != "https" or not stamp:
+            if not title or not https_url(link) or not stamp:
                 continue
             try:
                 published = datetime.fromisoformat(stamp) if re.match(r"^\d{4}-", stamp) else parsedate_to_datetime(stamp)
             except ValueError:
                 continue
-            if published.tzinfo is None or not now - timedelta(days=7) <= published <= now:
+            if published.tzinfo is None or not cutoff <= published <= now:
                 continue
-            if site == "PC Watch" and ("/todays_sales/" in link or PC_EXCLUDED.search(title)):
+            if urlsplit(link).hostname != urlsplit(feed).hostname:
                 continue
-            if category == "local" and LOCAL_EXCLUDED.search(title):
+            required_hint = slot.get("required_hint")
+            if required_hint and not re.search(required_hint, title, re.I):
                 continue
-            articles[link] = {
-                "category": category, "site": site, "title": title, "url": link,
+            key = article_key(link)
+            headline = f"{title} {urlsplit(link).path}"
+            hints = {**RULES["exclude_hints"], **slot["exclude_hints"]}
+            exclusion = "放送済みURL" if key in aired else next(
+                (reason for reason, pattern in hints.items() if re.search(pattern, headline, re.I)), None
+            )
+            if exclusion and not include_excluded:
+                continue
+            article = {
+                "category": category, "site": slot["site"], "title": title, "url": link,
                 "published": published.astimezone(JST).isoformat(),
+                "priority_hint": not exclusion and bool(re.search(slot["priority_hint"], title, re.I)),
             }
-    return articles
+            if exclusion:
+                article["excluded_reason"] = exclusion
+            articles[category, key] = article
+    ordered = sorted(articles.values(), key=lambda article: (
+        list(SLOTS).index(article["category"]), "excluded_reason" in article,
+        not article["priority_hint"], -datetime.fromisoformat(article["published"]).timestamp(), article["url"],
+    ))
+    return {(article["category"], article_key(article["url"])): article for article in ordered}
 
 
 def select_articles(review, candidates):
-    if not isinstance(review, list) or len(review) != len(CATEGORIES):
-        raise ValueError("元記事を確認した3件を指定してください")
-    selected = []
-    for category, entry in zip(CATEGORIES, review, strict=True):
-        article = candidates.get(entry["url"])
-        if not article or article["category"] != category:
-            raise ValueError(f"指定カテゴリの直近7日間のRSS候補にありません: {entry['url']}")
-        facts = entry["facts"]
+    if not isinstance(review, list):
+        raise ValueError("元記事を確認した記事の一覧を指定してください")
+    selected, omitted, used = {}, {}, set()
+    for entry in review:
+        if not isinstance(entry, dict):
+            raise ValueError("各項目に記事URLと確認済みの事実、または省略する枠と理由を指定してください")
+        url = entry.get("url")
+        reason = entry.get("reason")
+        category = entry.get("category")
+        key = None
+        if "url" in entry:
+            if not https_url(url):
+                raise ValueError(f"出典URLが不正です: {url}")
+            key = article_key(url)
+            slots = [name for name in SLOTS if (name, key) in candidates]
+            if category is None and len(slots) == 1:
+                category = slots[0]
+            if not slots:
+                raise ValueError(f"直近{RULES['days']}日間の適格なRSS候補にありません: {url}")
+            if category not in slots:
+                raise ValueError(f"出典URLの採用枠を指定または見直してください: {url}")
+            if key in used:
+                raise ValueError(f"同じ出典URLを複数の枠に使えません: {url}")
+        if category not in SLOTS or category in selected or category in omitted:
+            raise ValueError(f"枠が不明または重複しています: {url or category}")
+        if "url" not in entry:
+            if not is_text(reason):
+                raise ValueError(f"省略理由を指定してください: {category}")
+            omitted[category] = reason
+            continue
+        article = candidates[category, key]
+        used.add(key)
+        facts = entry.get("facts")
         if not isinstance(facts, list) or not facts or not all(is_text(fact) for fact in facts):
             raise ValueError("元記事の本文で確認した事実を指定してください")
-        # The editor verifies the body and eligibility before providing these notes.
-        request(article["url"])
-        selected.append({**article, "facts": facts})
-    return selected
+        selected[category] = {**article, "facts": facts}
+        if is_text(reason):
+            selected[category]["reason"] = reason
+    for category in SLOTS:
+        if category not in selected and category not in omitted:
+            if any(article["category"] == category for article in candidates.values()):
+                raise ValueError(f"採用記事または本文確認後の省略理由を指定してください: {category}")
+            omitted[category] = "期間内に一次選別を通過したRSS候補なし"
+    articles = []
+    for category in SLOTS:
+        if category in selected:
+            article = selected[category]
+            request(article["url"])
+            articles.append(article)
+    return articles, omitted
 
 
 def is_text(value):
@@ -100,8 +182,8 @@ def validate_episode(ep, *, reviewed=True):
         raise ValueError("台本形式または言語が違います")
     if date.fromisoformat(ep["date"]).isoformat() != ep["date"] or not is_text(ep["title"]):
         raise ValueError("日付または番組タイトルが不正です")
-    if len(ep["news"]) != len(CATEGORIES):
-        raise ValueError("ニュースは3本必要です")
+    if not 1 <= len(ep["news"]) <= len(SLOTS):
+        raise ValueError(f"ニュースは1〜{len(SLOTS)}本必要です")
     for block in [ep["opening"], *(n["lines"] for n in ep["news"]), ep["closing"]]:
         if not isinstance(block, list) or not block:
             raise ValueError("読み上げ文がありません")
@@ -114,14 +196,17 @@ def validate_episode(ep, *, reviewed=True):
         link = news["link"]
         if (not is_text(news["label"]) or not isinstance(news["points"], list)
                 or not news["points"] or not all(is_text(point) for point in news["points"])
-                or news["url"] != link["url"] or urlsplit(news["url"]).scheme != "https"
+                or news["url"] != link["url"] or not https_url(news["url"])
                 or set(link) != {"url", "site", "title", "description"}):
             raise ValueError("ニュースの要点または出典が不正です")
 
 
 def draft(sources, output):
     now = datetime.now(JST)
-    articles = select_articles(read_json(sources), candidate_articles(now))
+    articles, _ = select_articles(read_json(sources), candidate_articles(now))
+    count = len(articles)
+    if not count:
+        raise ValueError("台本に使える記事がありません")
     station = read_json(ROOT / "station.json")
     line = {"type": "object", "properties": {"say": {"type": "string"}, "show": {"type": "string"}},
             "required": ["say", "show"], "additionalProperties": False}
@@ -132,11 +217,11 @@ def draft(sources, output):
     }, "required": ["label", "points", "lines"], "additionalProperties": False}
     schema = {"type": "object", "properties": {
         "title": {"type": "string"}, "opening": lines, "closing": lines,
-        "news": {"type": "array", "items": news, "minItems": 3, "maxItems": 3},
+        "news": {"type": "array", "items": news, "minItems": count, "maxItems": count},
     }, "required": ["title", "opening", "closing", "news"], "additionalProperties": False}
     instructions = (
         f"{now.date()}の日本語ニュース番組「{station['name']}」の短い台本を書いてください。"
-        "ニュースは入力順に3本。ニュースごとに見出し、短い要点2つと本文2〜3文。"
+        f"ニュースは入力順に{count}本。ニュースごとに見出し、短い要点2つと本文2〜3文。"
         "オープニングと締めは各1〜2文。1つのsay/showには1文だけを入れてください。"
         "showは自然な字幕表記、sayは同じ意味を保ち、数字や英字と難読語を読みの仮名にしてください。"
         "記事ごとのfactsだけを根拠に、短く言い換えてください。推測、転載、個人情報、連絡先を含めないでください。"
@@ -145,7 +230,9 @@ def draft(sources, output):
     reply = json.loads(request("http://localhost:11434/api/generate", {
         "model": "gemma4:12b", "stream": False, "format": schema, "think": False,
         "options": {"num_ctx": 8192, "temperature": 0.2, "num_predict": 2400},
-        "system": instructions, "prompt": json.dumps(articles, ensure_ascii=False),
+        "system": instructions, "prompt": json.dumps([
+            {key: article[key] for key in ("title", "category", "facts")} for article in articles
+        ], ensure_ascii=False),
     }, timeout=360))
     if reply.get("done_reason") != "stop":
         raise ValueError("Ollamaが台本を最後まで生成できませんでした")
@@ -250,7 +337,10 @@ def render(ep):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("candidates")
+    candidates_command = commands.add_parser("candidates")
+    candidates_command.add_argument("--include-excluded", action="store_true")
+    select_command = commands.add_parser("select", help="確認済み記事の選定のみ")
+    select_command.add_argument("sources", type=Path)
     draft_command = commands.add_parser("draft")
     draft_command.add_argument("sources", type=Path)
     draft_command.add_argument("output", type=Path)
@@ -258,8 +348,12 @@ def main():
     render_command.add_argument("script", type=Path)
     args = parser.parse_args()
     if args.command == "candidates":
-        articles = candidate_articles(datetime.now(JST))
+        articles = candidate_articles(datetime.now(JST), include_excluded=args.include_excluded)
         print(json.dumps(list(articles.values()), ensure_ascii=False, indent=2))
+    elif args.command == "select":
+        selected, omitted = select_articles(read_json(args.sources), candidate_articles(datetime.now(JST)))
+        report = [{key: value for key, value in article.items() if key != "facts"} for article in selected]
+        print(json.dumps({"selected": report, "omitted": omitted}, ensure_ascii=False, indent=2))
     elif args.command == "draft":
         draft(args.sources, args.output)
     else:

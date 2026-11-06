@@ -1,0 +1,50 @@
+# 除外を先に適用し、次に優先条件を確認する。
+# 優先候補がなければ、除外に当たらない記事のうち最も重要なものを本文で選ぶ。
+# 適格な候補がない枠は、理由を添えて省略する。
+# 正規表現は見出しとURLパスで明示的に判断できる項目だけを扱う。
+days = 7
+
+[exclude_hints]
+"セール・値引き" = '/todays_sales/|セール|値引き|値下げ|最安値|最安更新|最安値級|最安級|特価|お買い得|激安|割引|スマイルSale|[0-9０-９]+(?:万)?円引き|[0-9０-９]+[%％](?:オフ|OFF)|\b(?:sale|discount)\b'
+
+[slots.ai]
+site = "PC Watch"
+feed = "https://pc.watch.impress.co.jp/data/rss/1.0/pcw/feed.rdf"
+required_hint = '(?<![A-Za-z0-9])(?:AI|LLM|ChatGPT|Claude|Gemini|Copilot|Ollama|GPT[- ]?[0-9]+)(?![A-Za-z0-9])|生成AI|人工知能|言語モデル|オープンウェイト|AIエージェント|AI秘書'
+priority = "ローカルLLM、AIの実用機能"
+priority_hint = 'ローカルLLM|オンデバイス|重み公開|(?:ローカル|端末上)(?:で|実行)|(?:AI|Claude|Gemini|ChatGPT).{0,24}(?:機能|対応|編集|翻訳|検索|対話)'
+exclude = "企業の業績、広告色の強い記事"
+[slots.ai.exclude_hints]
+"企業業績" = '決算発表|増収増益|減収減益|業績予想|四半期決算'
+"広告表示" = '\[Sponsored\]|【PR】|\[PR\]|広告企画|タイアップ広告'
+
+[slots.pc]
+site = "PC Watch"
+feed = "https://pc.watch.impress.co.jp/data/rss/1.0/pcw/feed.rdf"
+priority = "GPU・CPU、自作PC、スマホ、イヤホン、ミニPC、周辺機器"
+priority_hint = '\b(?:GPU|CPU|Ryzen|GeForce|RTX|Core i[3579])\b|自作PC|スマホ|イヤホン|ミニPC|周辺機器|キーボード|モニター|マウス'
+exclude = "セール、広告色の強い記事、配信番組の紹介"
+[slots.pc.exclude_hints]
+"広告表示" = '\[Sponsored\]|【PR】|\[PR\]|広告企画|タイアップ広告'
+"配信番組" = '配信番組|生配信|生放送|ガチくんに!'
+
+[slots.games]
+site = "AUTOMATON"
+feed = "https://automaton-media.com/feed/"
+priority = "FF、ペルソナ、ロックマン、フロム作品、ガンダム"
+priority_hint = '\bFF(?:[0-9]+|[IVX]+)?\b|ファイナルファンタジー|ペルソナ|ロックマン|フロム・ソフトウェア|エルデンリング|ELDEN RING|アーマード[・ ]?コア|ARMORED CORE|ダークソウル|DARK SOULS|ブラッドボーン|Bloodborne|SEKIRO|デモンズソウル|ガンダム'
+exclude = "スマホ専用、噂・リーク、課金やコラボの細かい告知。PCや家庭用機でも遊べる作品はスマホ版があっても対象"
+[slots.games.exclude_hints]
+"スマホ専用" = 'スマ(?:ホ|ートフォン)(?:向け)?(?:専用|限定)|(?:iOS|Android)(?:向け)?専用'
+"噂・リーク" = 'との噂|という噂|リーク(?:情報|による|された|か[。！？])'
+
+[slots.local]
+site = "宮崎市"
+feed = "https://www.city.miyazaki.miyazaki.jp/city/public_relations/press_material/rss.xml"
+priority = "防災、交通、ごみ、公園、イベント"
+priority_hint = '防災|給水|消防|交通|バス|ごみ|公園|イベント|フェスタ|祭り'
+exclude = "入札、人事、市職員向け、個人が特定される話題、事件・事故"
+[slots.local.exclude_hints]
+"入札・人事" = '入札|人事異動|人事発令|職員採用'
+"市職員向け" = '市職員向け|職員研修'
+"事件・事故" = '逮捕|不正アクセス|情報流出|交通事故(?:の発生|について)|(?:事件|事故)が発生'
