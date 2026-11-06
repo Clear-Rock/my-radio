@@ -76,8 +76,8 @@ def candidate_articles(now, *, include_excluded=False):
     aired = aired_article_keys()
     feeds = {}
     cutoff = now - timedelta(days=RULES["days"])
-    for category, slot in SLOTS.items():
-        feed = slot["feed"]
+    sources = [(category, slot, feed) for category, slot in SLOTS.items() for feed in slot.get("feeds", [])]
+    for category, slot, feed in sources:
         if feed not in feeds:
             feeds[feed] = ET.fromstring(request(feed))
         for item in feeds[feed].iterfind(".//{*}item"):
@@ -112,10 +112,15 @@ def candidate_articles(now, *, include_excluded=False):
             }
             if exclusion:
                 article["excluded_reason"] = exclusion
-            articles[category, key] = article
+            if tie_break_hint := slot.get("tie_break_hint"):
+                article["tie_break_hint"] = not exclusion and bool(re.search(tie_break_hint, title, re.I))
+            previous = articles.get((category, key))
+            if previous is None or article["published"] > previous["published"]:
+                articles[category, key] = article
     ordered = sorted(articles.values(), key=lambda article: (
         list(SLOTS).index(article["category"]), "excluded_reason" in article,
-        not article["priority_hint"], -datetime.fromisoformat(article["published"]).timestamp(), article["url"],
+        not article["priority_hint"], not article.get("tie_break_hint"),
+        -datetime.fromisoformat(article["published"]).timestamp(), article["url"],
     ))
     return {(article["category"], article_key(article["url"])): article for article in ordered}
 
@@ -163,7 +168,7 @@ def select_articles(review, candidates):
         if category not in selected and category not in omitted:
             if any(article["category"] == category for article in candidates.values()):
                 raise ValueError(f"採用記事または本文確認後の省略理由を指定してください: {category}")
-            omitted[category] = "期間内に一次選別を通過したRSS候補なし"
+            omitted[category] = SLOTS[category].get("hold_reason", "期間内に一次選別を通過したRSS候補なし")
     articles = []
     for category in SLOTS:
         if category in selected:

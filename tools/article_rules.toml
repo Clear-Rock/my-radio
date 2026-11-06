@@ -9,7 +9,7 @@ days = 7
 
 [slots.ai]
 site = "PC Watch"
-feed = "https://pc.watch.impress.co.jp/data/rss/1.0/pcw/feed.rdf"
+feeds = ["https://pc.watch.impress.co.jp/data/rss/1.0/pcw/feed.rdf"]
 required_hint = '(?<![A-Za-z0-9])(?:AI|LLM|ChatGPT|Claude|Gemini|Copilot|Ollama|GPT[- ]?[0-9]+)(?![A-Za-z0-9])|生成AI|人工知能|言語モデル|オープンウェイト|AIエージェント|AI秘書'
 priority = "ローカルLLM、AIの実用機能"
 priority_hint = 'ローカルLLM|オンデバイス|重み公開|(?:ローカル|端末上)(?:で|実行)|(?:AI|Claude|Gemini|ChatGPT).{0,24}(?:機能|対応|編集|翻訳|検索|対話)'
@@ -20,7 +20,7 @@ exclude = "企業の業績、広告色の強い記事"
 
 [slots.pc]
 site = "PC Watch"
-feed = "https://pc.watch.impress.co.jp/data/rss/1.0/pcw/feed.rdf"
+feeds = ["https://pc.watch.impress.co.jp/data/rss/1.0/pcw/feed.rdf"]
 priority = "GPU・CPU、自作PC、スマホ、イヤホン、ミニPC、周辺機器"
 priority_hint = '\b(?:GPU|CPU|Ryzen|GeForce|RTX|Core i[3579])\b|自作PC|スマホ|イヤホン|ミニPC|周辺機器|キーボード|モニター|マウス'
 exclude = "セール、広告色の強い記事、配信番組の紹介"
@@ -30,9 +30,10 @@ exclude = "セール、広告色の強い記事、配信番組の紹介"
 
 [slots.games]
 site = "AUTOMATON"
-feed = "https://automaton-media.com/feed/"
-priority = "FF、ペルソナ、ロックマン、フロム作品、ガンダム"
-priority_hint = '\bFF(?:[0-9]+|[IVX]+)?\b|ファイナルファンタジー|ペルソナ|ロックマン|フロム・ソフトウェア|エルデンリング|ELDEN RING|アーマード[・ ]?コア|ARMORED CORE|ダークソウル|DARK SOULS|ブラッドボーン|Bloodborne|SEKIRO|デモンズソウル|ガンダム'
+feeds = ["https://automaton-media.com/feed/"]
+priority = "FF、ペルソナ、ロックマン、フロム作品、ガンダム。同じ条件ならSteam対応を優先"
+tie_break_hint = '(?<![A-Za-z0-9])Steam(?![A-Za-z0-9])'
+priority_hint = '(?<![A-Za-z0-9])FF(?:[0-9]+|[IVX]+)?(?![A-Za-z0-9])|ファイナルファンタジー|ペルソナ|ロックマン|フロム・ソフトウェア|エルデンリング|ELDEN RING|アーマード[・ ]?コア|ARMORED CORE|ダークソウル|DARK SOULS|ブラッドボーン|Bloodborne|SEKIRO|デモンズソウル|ガンダム'
 exclude = "スマホ専用、噂・リーク、課金やコラボの細かい告知。PCや家庭用機でも遊べる作品はスマホ版があっても対象"
 [slots.games.exclude_hints]
 "スマホ専用" = 'スマ(?:ホ|ートフォン)(?:向け)?(?:専用|限定)|(?:iOS|Android)(?:向け)?専用'
@@ -40,11 +41,20 @@ exclude = "スマホ専用、噂・リーク、課金やコラボの細かい告
 
 [slots.local]
 site = "宮崎市"
-feed = "https://www.city.miyazaki.miyazaki.jp/city/public_relations/press_material/rss.xml"
-priority = "防災、交通、ごみ、公園、イベント"
-priority_hint = '防災|給水|消防|交通|バス|ごみ|公園|イベント|フェスタ|祭り'
-exclude = "入札、人事、市職員向け、個人が特定される話題、事件・事故"
+feeds = [
+  "https://www.city.miyazaki.miyazaki.jp/city/public_relations/press_material/rss.xml",
+  "https://www.city.miyazaki.miyazaki.jp/event_list/rss.xml",
+]
+priority = "防災、交通、ごみ、公園、イベント、飲食店や新規の店。店舗情報は市の公式発表に掲載された場合のみ"
+priority_hint = '防災|給水|消防|交通|バス|ごみ|公園|イベント|フェスタ|祭り|飲食店|新規出店|新店舗|オープン|キッチンカー|マルシェ'
+exclude = "入札、人事、市職員向け、個人が特定される話題、事件・事故、広告色の強い記事"
 [slots.local.exclude_hints]
+"広告表示" = '\[Sponsored\]|【PR】|\[PR\]|広告企画|タイアップ広告'
 "入札・人事" = '入札|人事異動|人事発令|職員採用'
 "市職員向け" = '市職員向け|職員研修'
 "事件・事故" = '逮捕|不正アクセス|情報流出|交通事故(?:の発生|について)|(?:事件|事故)が発生'
+
+[slots.anime]
+hold_reason = "アニメ！アニメ！の利用規約は無許諾の私的利用外の使用を制限しており、公開番組での利用を認めるRSS条件を確認できないため保留"
+priority = "ガンダム、放送中の話題作、劇場版アニメ"
+exclude = "グッズ、くじ、コラボ商品、配信サイトの案内、ネタバレ、噂"
