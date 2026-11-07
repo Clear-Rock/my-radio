@@ -1,8 +1,8 @@
 {
   "format": "myradio/station-1",
   "name": "クリアロックラジオ（仮）",
-  "description": "AI・PC、ゲーム、宮崎の暮らしに関わるニュースから、毎回3本を短くお伝えします。 台本の下書きにはAIを使い、出典と照合して校正しています。",
-  "tagline": "テクノロジー、ゲーム、宮崎のニュース",
+  "description": "トップニュース、AI、PC・ガジェット、ゲーム、ガンプラ・フィギュア、アニメの話題をお伝えします。台本の下書きにはAIを使い、出典と照合して校正しています。",
+  "tagline": "ニュースとテクノロジー、ゲーム・ホビー",
   "logo": "logo.svg",
   "url": "https://clear-rock.github.io/my-radio/",
   "repo": "https://github.com/Clear-Rock/my-radio",
@@ -19,7 +19,8 @@
   },
   "credits": [
     "VOICEVOX:春日部つむぎ",
-    "キャラクター：AI生成"
+    "キャラクター：AI生成",
+    "出典：気象庁ホームページ https://www.jma.go.jp/bosai/forecast/ （宮崎県の予報をクリアロックラジオが読み上げ用に要約・加工）"
   ],
   "caster": "声：VOICEVOX:春日部つむぎ",
   "audio": {

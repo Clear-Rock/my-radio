@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="628" viewBox="0 0 1200 628" role="img" aria-label="ゲーム">
+  <rect width="1200" height="628" fill="#141923"/>
+  <rect x="32" y="32" width="1136" height="564" rx="30" fill="#1e2734" stroke="#f5a9a0" stroke-opacity=".4" stroke-width="2"/>
+  <path d="M77 486H1120M77 495H550" stroke="#f5a9a0" stroke-width="2" opacity=".45"/>
+  <circle cx="908" cy="304" r="168" fill="none" stroke="#f5a9a0" stroke-opacity=".25" stroke-width="2"/>
+  <circle cx="908" cy="304" r="142" fill="#f5a9a0" fill-opacity=".08"/>
+  <g transform="translate(908 304)" fill="none" stroke="#f5a9a0" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"><path d="M-113 0c13-40 40-57 67-50L0-37l46-13c27-7 54 10 67 50 10 34 9 65-11 74-14 6-29-4-49-30H-53c-20 26-35 36-49 30-20-9-21-40-11-74zM-56-20v39m-19-20h39"/><circle cx="49" cy="-3" r="6" fill="#f5a9a0"/><circle cx="73" cy="15" r="6" fill="#f5a9a0"/></g>
+  <g font-family="'Yu Gothic', 'Noto Sans CJK JP', sans-serif">
+    <text x="80" y="167" fill="#f5a9a0" font-size="26" font-weight="700" letter-spacing="4">CLEAR ROCK RADIO  /  04</text>
+    <text x="77" y="326" fill="#f5f4ee" font-size="75" font-weight="700">ゲーム</text>
+    <text x="82" y="388" fill="#f5a9a0" font-size="26" font-weight="700" letter-spacing="4">GAMES</text>
+  </g>
+</svg>

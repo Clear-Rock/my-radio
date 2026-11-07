@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="628" viewBox="0 0 1200 628" role="img" aria-label="PC・ガジェット">
+  <rect width="1200" height="628" fill="#141923"/>
+  <rect x="32" y="32" width="1136" height="564" rx="30" fill="#1e2734" stroke="#a8beff" stroke-opacity=".4" stroke-width="2"/>
+  <path d="M77 486H1120M77 495H550" stroke="#a8beff" stroke-width="2" opacity=".45"/>
+  <circle cx="908" cy="304" r="168" fill="none" stroke="#a8beff" stroke-opacity=".25" stroke-width="2"/>
+  <circle cx="908" cy="304" r="142" fill="#a8beff" fill-opacity=".08"/>
+  <g transform="translate(908 304)" fill="none" stroke="#a8beff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"><rect x="-110" y="-74" width="220" height="140" rx="16"/><path d="M-110 37h220M0 66v38m-54 0H54M-64-30h47M-64-5h72"/></g>
+  <g font-family="'Yu Gothic', 'Noto Sans CJK JP', sans-serif">
+    <text x="80" y="167" fill="#a8beff" font-size="26" font-weight="700" letter-spacing="4">CLEAR ROCK RADIO  /  03</text>
+    <text x="77" y="326" fill="#f5f4ee" font-size="75" font-weight="700">PC・ガジェット</text>
+    <text x="82" y="388" fill="#a8beff" font-size="26" font-weight="700" letter-spacing="4">PC &amp; GADGETS</text>
+  </g>
+</svg>

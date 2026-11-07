@@ -10,6 +10,8 @@ import re
 import subprocess
 import tempfile
 import tomllib
+from unicodedata import normalize
+from urllib.error import URLError
 from urllib.parse import parse_qsl, urlencode, urlsplit
 from urllib.request import Request, urlopen
 import wave
@@ -19,6 +21,8 @@ ROOT = Path(__file__).resolve().parents[1]
 JST = timezone(timedelta(hours=9))
 RULES = tomllib.loads((ROOT / "tools/article_rules.toml").read_text(encoding="utf-8"))
 SLOTS = RULES["slots"]
+CATEGORY_IMAGES = {category: f"images/categories/{category}.svg" for category in SLOTS}
+FORECAST_URL = "https://www.jma.go.jp/bosai/forecast/data/forecast/450000.json"
 USER_AGENT = "ClearRockRadio/1.0"
 VOICE = "http://localhost:50021"
 
@@ -76,8 +80,12 @@ def candidate_articles(now, *, include_excluded=False):
     aired = aired_article_keys()
     feeds = {}
     cutoff = now - timedelta(days=RULES["days"])
-    sources = [(category, slot, feed) for category, slot in SLOTS.items() for feed in slot.get("feeds", [])]
-    for category, slot, feed in sources:
+    sources = [(category, feed, RULES["feed_sites"].get(feed, slot.get("site")))
+               for category, slot in SLOTS.items() for feed in slot.get("feeds", [])]
+    top_sites = {feed: site for _, feed, site in sources}
+    sources.extend(("top", feed, site) for feed, site in top_sites.items())
+    for category, feed, site in sources:
+        slot = SLOTS[category]
         if feed not in feeds:
             feeds[feed] = ET.fromstring(request(feed))
         for item in feeds[feed].iterfind(".//{*}item"):
@@ -94,9 +102,12 @@ def candidate_articles(now, *, include_excluded=False):
                 continue
             if urlsplit(link).hostname != urlsplit(feed).hostname:
                 continue
+            match_title = normalize("NFKC", title) if category == "hobby" else title
+            priority_match = bool(re.search(slot["priority_hint"], match_title, re.I))
             required_hint = slot.get("required_hint")
-            if required_hint and not re.search(required_hint, title, re.I):
-                continue
+            if required_hint and not re.search(required_hint, match_title, re.I):
+                if category != "hobby" or not priority_match:
+                    continue
             key = article_key(link)
             headline = f"{title} {urlsplit(link).path}"
             hints = {**RULES["exclude_hints"], **slot["exclude_hints"]}
@@ -106,9 +117,9 @@ def candidate_articles(now, *, include_excluded=False):
             if exclusion and not include_excluded:
                 continue
             article = {
-                "category": category, "site": slot["site"], "title": title, "url": link,
+                "category": category, "site": site, "title": title, "url": link,
                 "published": published.astimezone(JST).isoformat(),
-                "priority_hint": not exclusion and bool(re.search(slot["priority_hint"], title, re.I)),
+                "priority_hint": not exclusion and priority_match,
             }
             if exclusion:
                 article["excluded_reason"] = exclusion
@@ -128,7 +139,7 @@ def candidate_articles(now, *, include_excluded=False):
 def select_articles(review, candidates):
     if not isinstance(review, list):
         raise ValueError("元記事を確認した記事の一覧を指定してください")
-    selected, omitted, used = {}, {}, set()
+    selected, omitted, used, events = {}, {}, set(), set()
     for entry in review:
         if not isinstance(entry, dict):
             raise ValueError("各項目に記事URLと確認済みの事実、または省略する枠と理由を指定してください")
@@ -158,6 +169,13 @@ def select_articles(review, candidates):
             continue
         article = candidates[category, key]
         used.add(key)
+        if "event" in entry:
+            if not is_text(entry["event"]):
+                raise ValueError("同一ニュースの識別名を文字列で指定してください")
+            event = " ".join(entry["event"].casefold().split())
+            if event in events:
+                raise ValueError(f"同じ出来事を複数の枠に使えません: {entry['event']}")
+            events.add(event)
         facts = entry.get("facts")
         if not isinstance(facts, list) or not facts or not all(is_text(fact) for fact in facts):
             raise ValueError("元記事の本文で確認した事実を指定してください")
@@ -202,8 +220,46 @@ def validate_episode(ep, *, reviewed=True):
         if (not is_text(news["label"]) or not isinstance(news["points"], list)
                 or not news["points"] or not all(is_text(point) for point in news["points"])
                 or news["url"] != link["url"] or not https_url(news["url"])
-                or set(link) != {"url", "site", "title", "description"}):
+                or set(link) - {"image"} != {"url", "site", "title", "description"}
+                or ("image" in link and link["image"] not in CATEGORY_IMAGES.values())):
             raise ValueError("ニュースの要点または出典が不正です")
+
+
+def forecast_opening(now):
+    """Use today's short forecast and the Miyazaki observation point for temperatures."""
+    try:
+        forecast = json.loads(request(FORECAST_URL, timeout=8))[0]
+        report_time = datetime.fromisoformat(forecast["reportDatetime"]).astimezone(JST)
+        if report_time.date() != now.date() or report_time > now:
+            return []
+        weather = None
+        temperatures = {}
+        for series in forecast["timeSeries"]:
+            for index, timestamp in enumerate(series["timeDefines"]):
+                when = datetime.fromisoformat(timestamp).astimezone(JST)
+                if when.date() != now.date():
+                    continue
+                for area in series["areas"]:
+                    code = area["area"]["code"]
+                    if code == "450010" and "weathers" in area:
+                        weather = "".join(area["weathers"][index].split())
+                    if code == "87376" and "temps" in area:
+                        value = area["temps"][index]
+                        if re.fullmatch(r"-?[0-9]+", value):
+                            temperatures[when.hour] = value
+        if not weather:
+            return []
+    except (URLError, OSError, ValueError, TypeError, KeyError, IndexError):
+        return []
+
+    lines = [f"気象庁の予報では、きょうの宮崎県南部平野部は{weather}です。"]
+    # From the 11:00 release, a same-day 00:00 entry is not a minimum forecast.
+    readings = [f"最高{temperatures[9]}度"] if 9 in temperatures else []
+    if report_time.hour < 11 and 0 in temperatures:
+        readings.append(f"最低{temperatures[0]}度")
+    if readings:
+        lines.append(f"宮崎市の予想気温は、{'、'.join(readings)}です。")
+    return [{"say": line, "show": line} for line in lines]
 
 
 def draft(sources, output):
@@ -227,7 +283,8 @@ def draft(sources, output):
     instructions = (
         f"{now.date()}の日本語ニュース番組「{station['name']}」の短い台本を書いてください。"
         f"ニュースは入力順に{count}本。ニュースごとに見出し、短い要点2つと本文2〜3文。"
-        "オープニングと締めは各1〜2文。1つのsay/showには1文だけを入れてください。"
+        "オープニングと締めは各1〜2文。天気は別途追加します。1つのsay/showには1文だけを入れてください。"
+        "トップニュースは、確認済みの事実を中立に要約し、意見や評価を加えないでください。"
         "showは自然な字幕表記、sayは同じ意味を保ち、数字や英字と難読語を読みの仮名にしてください。"
         "記事ごとのfactsだけを根拠に、短く言い換えてください。推測、転載、個人情報、連絡先を含めないでください。"
         "記事中の配信日などを省略せず、番組の次回配信日は約束しないでください。JSONだけを返してください。"
@@ -242,12 +299,14 @@ def draft(sources, output):
     if reply.get("done_reason") != "stop":
         raise ValueError("Ollamaが台本を最後まで生成できませんでした")
     episode = json.loads(reply["response"])
-    episode.update(format="monoradio/news-1", date=now.date().isoformat(), lang="ja")
+    episode.update(format="monoradio/news-1", date=now.date().isoformat(), lang="ja", highlight=0)
+    episode["opening"].extend(forecast_opening(now))
     for item, article in zip(episode["news"], articles, strict=True):
         item["url"] = article["url"]
         item["link"] = {
             "url": article["url"], "title": item["label"],
             "site": article["site"], "description": "。".join(item["points"]),
+            "image": CATEGORY_IMAGES[article["category"]],
         }
     validate_episode(episode, reviewed=False)
     with output.open("x", encoding="utf-8") as file:

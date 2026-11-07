@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="628" viewBox="0 0 1200 628" role="img" aria-label="トップニュース">
+  <rect width="1200" height="628" fill="#141923"/>
+  <rect x="32" y="32" width="1136" height="564" rx="30" fill="#1e2734" stroke="#f3bb5e" stroke-opacity=".4" stroke-width="2"/>
+  <path d="M77 486H1120M77 495H550" stroke="#f3bb5e" stroke-width="2" opacity=".45"/>
+  <circle cx="908" cy="304" r="168" fill="none" stroke="#f3bb5e" stroke-opacity=".25" stroke-width="2"/>
+  <circle cx="908" cy="304" r="142" fill="#f3bb5e" fill-opacity=".08"/>
+  <g transform="translate(908 304)" fill="none" stroke="#f3bb5e" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"><path d="M-103-82h174a18 18 0 0 1 18 18V77H-85a18 18 0 0 1-18-18z"/><path d="M-71-43H55M-71-10h55v51h-55zM12-10h43M12 17h43M12 44h43"/></g>
+  <g font-family="'Yu Gothic', 'Noto Sans CJK JP', sans-serif">
+    <text x="80" y="167" fill="#f3bb5e" font-size="26" font-weight="700" letter-spacing="4">CLEAR ROCK RADIO  /  01</text>
+    <text x="77" y="326" fill="#f5f4ee" font-size="75" font-weight="700">トップニュース</text>
+    <text x="82" y="388" fill="#f3bb5e" font-size="26" font-weight="700" letter-spacing="4">TOP NEWS</text>
+  </g>
+</svg>
